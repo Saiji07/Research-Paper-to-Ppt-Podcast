@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Get the API key from environment variables
-api_key = os.getenv("GEMINI_API_KEY")
+api_key = st.secrets["GEMINI_API_KEY"]
 # Initialize Gemini 1.5 Flash
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemini-1.5-flash")
