@@ -17,8 +17,7 @@ model = genai.GenerativeModel("gemini-1.5-flash")
 
 # Streamlit UI
 st.title("Research Paper Summarizer and PowerPoint Generator with 🎙 Podcast Feature")
-st.write("Group Name: Software_Chaser")
-st.write("Members: Saiji (Leader), Vyom, Maharsh, Dhwanil, Akshay")
+
 st.write("Upload a PDF file to get a summary, listen to expert discussion audio, and download the PowerPoint presentation.")
 
 # Dropdown for summary level
