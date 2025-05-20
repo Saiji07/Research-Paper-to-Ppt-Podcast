@@ -255,9 +255,8 @@ Paper summary:
 def generate_podcast_audio(podcast_script, rate=150):
     """Generate TTS audio with distinct voices for host and researcher."""
     try:
-        # Create a temporary directory to store the audio file
+        # Create a temporary directory to store the audio files
         temp_dir = tempfile.mkdtemp()
-        audio_file_path = os.path.join(temp_dir, "podcast.mp3")
         
         # Parse script into segments
         segments = []
@@ -275,16 +274,54 @@ def generate_podcast_audio(podcast_script, rate=150):
                 text = line.replace("Dr. Smith:", "").strip()
                 segments.append((speaker, text))
         
-        # Generate combined audio
-        full_text = " ".join([text for _, text in segments])
-        tts = gTTS(text=full_text, lang='en', slow=False)
-        tts.save(audio_file_path)
+        # Create separate audio files for each speaker
+        alex_parts = []
+        smith_parts = []
         
-        # Display the audio player
-        st.write("### 🔊 Podcast Audio")
-        with open(audio_file_path, "rb") as f:
-            audio_bytes = f.read()
-            st.audio(audio_bytes, format="audio/mp3")
+        for speaker, text in segments:
+            if speaker == "Alex":
+                alex_parts.append(text)
+            else:
+                smith_parts.append(text)
+        
+        # Generate separate audio files with different voice characteristics
+        alex_file = os.path.join(temp_dir, "alex_audio.mp3")
+        smith_file = os.path.join(temp_dir, "smith_audio.mp3")
+        
+        # Use different TTS settings for Alex (female voice - higher pitch)
+        if alex_parts:
+            alex_text = " ".join(alex_parts)
+            alex_tts = gTTS(text=alex_text, lang='en', tld='com.au', slow=False)  # Australian English for female host
+            alex_tts.save(alex_file)
+        
+        # Use different TTS settings for Dr. Smith (male voice - lower pitch)
+        if smith_parts:
+            smith_text = " ".join(smith_parts)
+            smith_tts = gTTS(text=smith_text, lang='en', tld='co.uk', slow=False)  # British English for male researcher
+            smith_tts.save(smith_file)
+        
+        # Display the audio players with clear labels
+        st.write("### 🎧 Podcast Audio")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Alex (Host):**")
+            if alex_parts:
+                with open(alex_file, "rb") as f:
+                    alex_bytes = f.read()
+                    st.audio(alex_bytes, format="audio/mp3")
+            else:
+                st.write("No audio for Alex in this podcast.")
+                
+        with col2:
+            st.write("**Dr. Smith (Researcher):**")
+            if smith_parts:
+                with open(smith_file, "rb") as f:
+                    smith_bytes = f.read()
+                    st.audio(smith_bytes, format="audio/mp3")
+            else:
+                st.write("No audio for Dr. Smith in this podcast.")
         
         # Initialize session state for script navigation if not already done
         if 'current_line' not in st.session_state:
@@ -293,7 +330,7 @@ def generate_podcast_audio(podcast_script, rate=150):
         # Avatar display area
         avatar_placeholder = st.empty()
         
-        # Show current speaker's avatar
+        # Show current speaker's avatar (ensuring the correct one is highlighted)
         if st.session_state.current_line < len(segments):
             current_speaker = segments[st.session_state.current_line][0]
             avatar_placeholder.markdown(get_avatar_html(current_speaker), unsafe_allow_html=True)
@@ -336,7 +373,10 @@ def generate_podcast_audio(podcast_script, rate=150):
                     st.markdown(f"<div style='color:#3366FF; padding:5px;'><strong>{speaker}:</strong> {text}</div>", unsafe_allow_html=True)
         
         # Clean up temporary files
-        os.remove(audio_file_path)
+        if os.path.exists(alex_file):
+            os.remove(alex_file)
+        if os.path.exists(smith_file):
+            os.remove(smith_file)
         os.rmdir(temp_dir)
         
         return True
