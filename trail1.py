@@ -7,6 +7,10 @@ from pptx import Presentation
 from io import BytesIO
 from langchain_community.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
+import os
+import tempfile
+import streamlit as st
+from gtts import gTTS
 load_dotenv()
 
 # Get the API key from environment variables
@@ -251,32 +255,92 @@ Paper summary:
 def generate_podcast_audio(podcast_script, rate=150):
     """Generate TTS audio with distinct voices for host and researcher."""
     try:
-        engine = pyttsx3.init()
-        engine.setProperty('rate', rate)
-        voices = engine.getProperty('voices')
-        male_voice = voices[0].id
-        female_voice = voices[1].id
-        avatar_placeholder = st.empty()
+        # Create a temporary directory to store the audio file
+        temp_dir = tempfile.mkdtemp()
+        audio_file_path = os.path.join(temp_dir, "podcast.mp3")
+        
+        # Parse script into segments
+        segments = []
         for line in podcast_script.split('\n'):
             line = line.strip()
             if not line:
                 continue
-
+                
             if line.startswith("Alex:"):
-                engine.setProperty('voice', female_voice)
+                speaker = "Alex"
                 text = line.replace("Alex:", "").strip()
-                avatar_placeholder.markdown(get_avatar_html('Alex'), unsafe_allow_html=True)
+                segments.append((speaker, text))
             elif line.startswith("Dr. Smith:"):
-                engine.setProperty('voice', male_voice)
+                speaker = "Dr. Smith"
                 text = line.replace("Dr. Smith:", "").strip()
-                avatar_placeholder.markdown(get_avatar_html('Dr. Smith'), unsafe_allow_html=True)
+                segments.append((speaker, text))
+        
+        # Generate combined audio
+        full_text = " ".join([text for _, text in segments])
+        tts = gTTS(text=full_text, lang='en', slow=False)
+        tts.save(audio_file_path)
+        
+        # Display the audio player
+        st.write("### 🔊 Podcast Audio")
+        with open(audio_file_path, "rb") as f:
+            audio_bytes = f.read()
+            st.audio(audio_bytes, format="audio/mp3")
+        
+        # Initialize session state for script navigation if not already done
+        if 'current_line' not in st.session_state:
+            st.session_state.current_line = 0
+        
+        # Avatar display area
+        avatar_placeholder = st.empty()
+        
+        # Show current speaker's avatar
+        if st.session_state.current_line < len(segments):
+            current_speaker = segments[st.session_state.current_line][0]
+            avatar_placeholder.markdown(get_avatar_html(current_speaker), unsafe_allow_html=True)
+        else:
+            avatar_placeholder.markdown(get_avatar_html(''), unsafe_allow_html=True)
+        
+        # Navigation controls
+        col1, col2, col3 = st.columns([1, 1, 1])
+        
+        with col1:
+            if st.button("⏮️ Reset"):
+                st.session_state.current_line = 0
+                st.experimental_rerun()
+                
+        with col2:
+            if st.button("⏪ Previous Line") and st.session_state.current_line > 0:
+                st.session_state.current_line -= 1
+                st.experimental_rerun()
+                
+        with col3:
+            if st.button("Next Line ⏩") and st.session_state.current_line < len(segments):
+                st.session_state.current_line += 1
+                st.experimental_rerun()
+        
+        # Display script with current line highlighted
+        st.write("### 📝 Podcast Script")
+        for idx, (speaker, text) in enumerate(segments):
+            if idx == st.session_state.current_line:
+                # Highlight current line
+                st.markdown(f"""
+                <div style='background-color: #e6f7ff; padding: 10px; border-radius: 5px; border-left: 5px solid #1890ff;'>
+                <strong>{speaker}:</strong> {text}
+                </div>
+                """, unsafe_allow_html=True)
             else:
-                continue
-
-            engine.say(text)
-            engine.runAndWait()
-
+                # Normal display for other lines
+                if speaker == "Alex":
+                    st.markdown(f"<div style='color:#FF5733; padding:5px;'><strong>{speaker}:</strong> {text}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='color:#3366FF; padding:5px;'><strong>{speaker}:</strong> {text}</div>", unsafe_allow_html=True)
+        
+        # Clean up temporary files
+        os.remove(audio_file_path)
+        os.rmdir(temp_dir)
+        
         return True
+        
     except Exception as e:
         st.error(f"Error generating audio: {e}")
         return False
