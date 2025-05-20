@@ -253,7 +253,7 @@ Paper summary:
         return None
 
 def generate_podcast_audio(podcast_script, rate=150):
-    """Generate TTS audio with distinct voices for host and researcher."""
+    """Generate TTS audio with distinct voices for host and researcher in conversation order."""
     try:
         # Create a temporary directory to store the audio files
         temp_dir = tempfile.mkdtemp()
@@ -274,92 +274,103 @@ def generate_podcast_audio(podcast_script, rate=150):
                 text = line.replace("Dr. Smith:", "").strip()
                 segments.append((speaker, text))
         
-        # Create separate audio files for each speaker
-        alex_parts = []
-        smith_parts = []
-        
-        for speaker, text in segments:
+        # Generate individual audio files for each segment
+        audio_files = []
+        for i, (speaker, text) in enumerate(segments):
+            segment_file = os.path.join(temp_dir, f"segment_{i}.mp3")
+            
+            # Use different TTS settings based on speaker
             if speaker == "Alex":
-                alex_parts.append(text)
-            else:
-                smith_parts.append(text)
+                tts = gTTS(text=text, lang='en', tld='com.au', slow=False)  # Australian English for female host
+            else:  # Dr. Smith
+                tts = gTTS(text=text, lang='en', tld='co.uk', slow=False)  # British English for male researcher
+            
+            tts.save(segment_file)
+            audio_files.append((speaker, segment_file))
         
-        # Generate separate audio files with different voice characteristics
-        alex_file = os.path.join(temp_dir, "alex_audio.mp3")
-        smith_file = os.path.join(temp_dir, "smith_audio.mp3")
+        # Display the complete conversation audio
+        st.write("### 🎧 Complete Podcast Audio")
         
-        # Use different TTS settings for Alex (female voice - higher pitch)
-        if alex_parts:
-            alex_text = " ".join(alex_parts)
-            alex_tts = gTTS(text=alex_text, lang='en', tld='com.au', slow=False)  # Australian English for female host
-            alex_tts.save(alex_file)
-        
-        # Use different TTS settings for Dr. Smith (male voice - lower pitch)
-        if smith_parts:
-            smith_text = " ".join(smith_parts)
-            smith_tts = gTTS(text=smith_text, lang='en', tld='co.uk', slow=False)  # British English for male researcher
-            smith_tts.save(smith_file)
-        
-        # Display the audio players with clear labels
-        st.write("### 🎧 Podcast Audio")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Alex (Host):**")
-            if alex_parts:
-                with open(alex_file, "rb") as f:
-                    alex_bytes = f.read()
-                    st.audio(alex_bytes, format="audio/mp3")
-            else:
-                st.write("No audio for Alex in this podcast.")
-                
-        with col2:
-            st.write("**Dr. Smith (Researcher):**")
-            if smith_parts:
-                with open(smith_file, "rb") as f:
-                    smith_bytes = f.read()
-                    st.audio(smith_bytes, format="audio/mp3")
-            else:
-                st.write("No audio for Dr. Smith in this podcast.")
-        
-        # Initialize session state for script navigation if not already done
-        if 'current_line' not in st.session_state:
-            st.session_state.current_line = 0
+        # Create navigation for audio segments
+        if 'current_segment' not in st.session_state:
+            st.session_state.current_segment = 0
         
         # Avatar display area
         avatar_placeholder = st.empty()
         
-        # Show current speaker's avatar (ensuring the correct one is highlighted)
-        if st.session_state.current_line < len(segments):
-            current_speaker = segments[st.session_state.current_line][0]
+        # Show current speaker's avatar
+        if st.session_state.current_segment < len(segments):
+            current_speaker = segments[st.session_state.current_segment][0]
             avatar_placeholder.markdown(get_avatar_html(current_speaker), unsafe_allow_html=True)
         else:
             avatar_placeholder.markdown(get_avatar_html(''), unsafe_allow_html=True)
         
+        # Audio player for current segment
+        if st.session_state.current_segment < len(audio_files):
+            speaker, audio_file = audio_files[st.session_state.current_segment]
+            with open(audio_file, "rb") as f:
+                audio_bytes = f.read()
+                st.audio(audio_bytes, format="audio/mp3")
+                st.markdown(f"**Now Speaking: {speaker}**")
+        
         # Navigation controls
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
         
         with col1:
             if st.button("⏮️ Reset"):
-                st.session_state.current_line = 0
+                st.session_state.current_segment = 0
                 st.experimental_rerun()
                 
         with col2:
-            if st.button("⏪ Previous Line") and st.session_state.current_line > 0:
-                st.session_state.current_line -= 1
+            if st.button("⏪ Previous") and st.session_state.current_segment > 0:
+                st.session_state.current_segment -= 1
                 st.experimental_rerun()
                 
         with col3:
-            if st.button("Next Line ⏩") and st.session_state.current_line < len(segments):
-                st.session_state.current_line += 1
+            if st.button("Next ⏩") and st.session_state.current_segment < len(segments) - 1:
+                st.session_state.current_segment += 1
                 st.experimental_rerun()
+                
+        with col4:
+            if st.button("Auto-Play All"):
+                # In Streamlit, we can't truly auto-play sequentially
+                # This is a limitation of the Streamlit framework
+                st.warning("Due to Streamlit limitations, we can't auto-play segments sequentially. You can manually click through the segments.")
+        
+        # Add option to download full conversation
+        if st.button("Generate & Download Full Conversation"):
+            # This would merge all audio files into one
+            from pydub import AudioSegment
+            
+            try:
+                # Use pydub to concatenate audio files
+                combined = AudioSegment.empty()
+                for _, file_path in audio_files:
+                    segment = AudioSegment.from_mp3(file_path)
+                    combined += segment
+                
+                # Save the combined audio
+                full_audio_path = os.path.join(temp_dir, "full_conversation.mp3")
+                combined.export(full_audio_path, format="mp3")
+                
+                # Provide download button
+                with open(full_audio_path, "rb") as f:
+                    full_audio_bytes = f.read()
+                    st.download_button(
+                        label="Download Full Conversation Audio",
+                        data=full_audio_bytes,
+                        file_name="podcast_conversation.mp3",
+                        mime="audio/mp3"
+                    )
+            except Exception as e:
+                st.error(f"Error generating full audio: {e}")
+                st.info("Note: You may need to install the pydub package and ffmpeg. Add 'pydub' to your requirements.txt file.")
         
         # Display script with current line highlighted
         st.write("### 📝 Podcast Script")
         for idx, (speaker, text) in enumerate(segments):
-            if idx == st.session_state.current_line:
-                # Highlight current line
+            if idx == st.session_state.current_segment:
+                # Highlight current segment
                 st.markdown(f"""
                 <div style='background-color: #e6f7ff; padding: 10px; border-radius: 5px; border-left: 5px solid #1890ff;'>
                 <strong>{speaker}:</strong> {text}
@@ -372,11 +383,16 @@ def generate_podcast_audio(podcast_script, rate=150):
                 else:
                     st.markdown(f"<div style='color:#3366FF; padding:5px;'><strong>{speaker}:</strong> {text}</div>", unsafe_allow_html=True)
         
-        # Clean up temporary files
-        if os.path.exists(alex_file):
-            os.remove(alex_file)
-        if os.path.exists(smith_file):
-            os.remove(smith_file)
+        # Clean up temporary files when done
+        for _, file_path in audio_files:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        
+        # Remove the full conversation file if it exists
+        full_audio_path = os.path.join(temp_dir, "full_conversation.mp3")
+        if os.path.exists(full_audio_path):
+            os.remove(full_audio_path)
+            
         os.rmdir(temp_dir)
         
         return True
@@ -384,6 +400,7 @@ def generate_podcast_audio(podcast_script, rate=150):
     except Exception as e:
         st.error(f"Error generating audio: {e}")
         return False
+
 
 if pdf_file is not None:
     # Save the uploaded PDF temporarily
